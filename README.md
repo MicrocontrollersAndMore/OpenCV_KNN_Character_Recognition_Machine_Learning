@@ -1,1 +1,0 @@
-# OpenCV_KNN_Character_Recognition_Machine_Learning
