@@ -27,12 +27,12 @@ int main() {
 	std::vector<cv::Vec4i> v4iHierarchy;					// declare contours hierarchy
 
 	cv::Mat matClassificationInts;		// these are our training classifications, note we will have to perform some conversions before writing to file later
-	
+
 												// these are our training images, due to the data types that the KNN object KNearest requires,
 	cv::Mat matTrainingImages;					// we have to declare a single Mat, then append to it as though it's a vector,
 												// also we will have to perform some conversions before writing to file later
 
-								// possible chars we are interested in are digits 0 through 9, put these in vector intValidChars
+	// possible chars we are interested in are digits 0 through 9, put these in vector intValidChars
 	std::vector<int> intValidChars = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
 
 	matTrainingNumbers = cv::imread("training_numbers.png");			// read in training numbers image
@@ -49,24 +49,24 @@ int main() {
 		cv::Size(5, 5),						// smoothing window width and height in pixels
 		0);									// sigma value, determines how much the image will be blurred, zero makes function choose the sigma value
 
-										// filter image from grayscale to black and white
+	// filter image from grayscale to black and white
 	cv::adaptiveThreshold(matBlurred,							// input image
-						  matThresh,							// output image
-						  255,									// make pixels that pass the threshold full white
-						  cv::ADAPTIVE_THRESH_GAUSSIAN_C,		// use gaussian rather than mean, seems to give better results
-						  cv::THRESH_BINARY_INV,				// invert so foreground will be white, background will be black
-						  11,									// size of a pixel neighborhood used to calculate threshold value
-						  2);									// constant subtracted from the mean or weighted mean
+		matThresh,							// output image
+		255,									// make pixels that pass the threshold full white
+		cv::ADAPTIVE_THRESH_GAUSSIAN_C,		// use gaussian rather than mean, seems to give better results
+		cv::THRESH_BINARY_INV,				// invert so foreground will be white, background will be black
+		11,									// size of a pixel neighborhood used to calculate threshold value
+		2);									// constant subtracted from the mean or weighted mean
 
 	cv::imshow("matThresh", matThresh);			// show threshold image for reference
 
 	matThreshCopy = matThresh.clone();			// make a copy of the thresh image, this in necessary b/c findContours modifies the image
 
 	cv::findContours(matThreshCopy,					// input image, make sure to use a copy since the function will modify this image in the course of finding contours
-					 ptContours,					// output contours
-					 v4iHierarchy,					// output hierarchy
-					 cv::RETR_EXTERNAL,				// retrieve the outermost contours only
-					 cv::CHAIN_APPROX_SIMPLE);		// compress horizontal, vertical, and diagonal segments and leave only their end points
+		ptContours,					// output contours
+		v4iHierarchy,					// output hierarchy
+		cv::RETR_EXTERNAL,				// retrieve the outermost contours only
+		cv::CHAIN_APPROX_SIMPLE);		// compress horizontal, vertical, and diagonal segments and leave only their end points
 
 	for (int i = 0; i < ptContours.size(); i++) {						// for each contour
 		if (cv::contourArea(ptContours[i]) > MIN_CONTOUR_AREA) {			// if contour is big enough to consider
@@ -78,7 +78,7 @@ int main() {
 
 			cv::Mat matROIResized;
 			cv::resize(matROI, matROIResized, cv::Size(RESIZED_IMAGE_WIDTH, RESIZED_IMAGE_HEIGHT));		// resize image, this will be more consistent for recognition and storage
-			
+
 			cv::imshow("matROI", matROI);								// show ROI image for reference
 			cv::imshow("matROIResized", matROIResized);					// show resized ROI image for reference
 			cv::imshow("matTrainingNumbers", matTrainingNumbers);		// show training numbers image, this will now have red rectangles drawn on it
@@ -87,13 +87,14 @@ int main() {
 
 			if (intChar == 27) {		// if esc key was pressed
 				return(0);				// exit program
-			} else if (std::find(intValidChars.begin(), intValidChars.end(), intChar) != intValidChars.end()) {  // else if the char is in the list of chars we are looking for . . .
-				
+			}
+			else if (std::find(intValidChars.begin(), intValidChars.end(), intChar) != intValidChars.end()) {  // else if the char is in the list of chars we are looking for . . .
+
 				matClassificationInts.push_back(intChar);		// append classification char to integer list of chars (we will convert later before writing to file)
 
-				cv::Mat matImageFloat;
+				cv::Mat matImageFloat;							// now add the training image (some conversion is necessary first) . . .
 				matROIResized.convertTo(matImageFloat, CV_32FC1);		// convert Mat to float
-				
+
 				cv::Mat matImageReshaped = matImageFloat.reshape(1, 1);		// flatten
 
 				matTrainingImages.push_back(matImageReshaped);		// add to Mat as though it was a vector, this is necessary due to the
@@ -104,9 +105,7 @@ int main() {
 
 	std::cout << "training complete\n\n";
 
-			// save classifications to file ///////////////////////////////////////////////////////
-
-	cv::Mat matClassificationIntsReshaped = matClassificationInts.reshape(1, 1);		// flatten
+	// save classifications to file ///////////////////////////////////////////////////////
 
 	cv::Mat matClassificationFloats;
 	matClassificationInts.convertTo(matClassificationFloats, CV_32FC1);			// convert ints to floats
@@ -120,8 +119,8 @@ int main() {
 
 	fsClassifications << "classifications" << matClassificationFloats;		// write classifications into classifications section of classifications file
 	fsClassifications.release();											// close the classifications file
-	
-			// save training images to file ///////////////////////////////////////////////////////
+
+	// save training images to file ///////////////////////////////////////////////////////
 
 	cv::FileStorage fsTrainingImages("images.xml", cv::FileStorage::WRITE);			// open the training images file
 
@@ -129,10 +128,11 @@ int main() {
 		std::cout << "error, unable to open training images file, exiting program\n\n";			// show error message
 		return(0);																				// and exit program
 	}
-	
+
 	fsTrainingImages << "images" << matTrainingImages;		// write training images into images section of images file
 	fsTrainingImages.release();								// close the training images file
 
 	return(0);
 }
+
 
