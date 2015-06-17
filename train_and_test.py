@@ -1,3 +1,5 @@
+# train_and_test.py
+
 import cv2
 import numpy as np
 import operator
@@ -114,7 +116,7 @@ def main():
         strFinalString = strFinalString + strCurrentChar            # append current char to full string
     # end for
 
-    print strFinalString                # show the full string
+    print "\n" + strFinalString + "\n"                  # show the full string
 
     cv2.imshow("imgTestingNumbers", imgTestingNumbers)      # show input image with green boxes drawn around found digits
     cv2.waitKey(0)                                          # wait for user key press

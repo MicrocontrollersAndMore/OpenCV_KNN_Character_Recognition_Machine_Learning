@@ -1,4 +1,4 @@
-// OCR3b.cpp
+// generate_data.cpp
 
 #include<opencv2/core/core.hpp>
 #include<opencv2/highgui/highgui.hpp>
@@ -6,7 +6,7 @@
 #include<opencv2/ml/ml.hpp>
 
 #include<iostream>
-#include<sstream>
+#include<vector>
 
 // global variables ///////////////////////////////////////////////////////////////////////////////
 const int MIN_CONTOUR_AREA = 100;
@@ -15,138 +15,124 @@ const int RESIZED_IMAGE_WIDTH = 20;
 const int RESIZED_IMAGE_HEIGHT = 30;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-class ContourWithData {
-public:
-	std::vector<cv::Point> ptContour;			// contour
-	cv::Rect boundingRect;						// bounding rect for contour
-	float fltArea;								// area of contour
-
-	///////////////////////////////////////////////////////////////////////////////////////////////
-	bool checkIfContourIsValid() {									// obviously in a production grade program
-		if (fltArea < MIN_CONTOUR_AREA) return false;				// we would have a much more robust function for 
-		return true;												// identifying if a contour is valid !!
-	}
-
-	///////////////////////////////////////////////////////////////////////////////////////////////
-	static bool sortByBoundingRectXPosition(const ContourWithData& cwdLeft, const ContourWithData& cwdRight) {		// this function allows us to sort
-		return(cwdLeft.boundingRect.x < cwdRight.boundingRect.x);													// the contours from left to right
-	}
-
-};
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 int main() {
-	std::vector<ContourWithData> allContoursWithData;			// declare empty vectors,
-	std::vector<ContourWithData> validContoursWithData;			// we will fill these shortly
 
-			// read in training classifications
+	cv::Mat matTrainingNumbers;		// input image
+	cv::Mat matGrayscale;			// 
+	cv::Mat matBlurred;				// declare various images
+	cv::Mat matThresh;				//
+	cv::Mat matThreshCopy;			//
+
+	std::vector<std::vector<cv::Point> > ptContours;		// declare contours vector
+	std::vector<cv::Vec4i> v4iHierarchy;					// declare contours hierarchy
+
+	cv::Mat matClassificationInts;		// these are our training classifications, note we will have to perform some conversions before writing to file later
 	
-	cv::Mat matClassificationFloats;	// we will read the classification numbers into this variable as though it is a vector
+												// these are our training images, due to the data types that the KNN object KNearest requires,
+	cv::Mat matTrainingImages;					// we have to declare a single Mat, then append to it as though it's a vector,
+												// also we will have to perform some conversions before writing to file later
 
-	cv::FileStorage fsClassifications("classifications.xml", cv::FileStorage::READ);		// open the classifications file
+								// possible chars we are interested in are digits 0 through 9, put these in vector intValidChars
+	std::vector<int> intValidChars = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
 
-	if (fsClassifications.isOpened() == false) {
-		std::cout << "error, unable to open training classifications file, exiting program\n\n";
-		return(0);
+	matTrainingNumbers = cv::imread("training_numbers.png");			// read in training numbers image
+
+	if (matTrainingNumbers.empty()) {							// if unable to open image
+		std::cout << "error: image not read from file\n\n";		// show error message on command line
+		return(0);												// and exit program
 	}
 
-	fsClassifications["classifications"] >> matClassificationFloats;
-	fsClassifications.release();
-
-													// read in training images
-	cv::Mat matTrainingImages;
-
-	cv::FileStorage fsTrainingImages("images.xml", cv::FileStorage::READ);
-
-	if (fsTrainingImages.isOpened() == false) {
-		std::cout << "error, unable to open training images file, exiting program\n\n";
-		return(0);
-	}
-
-	fsTrainingImages["images"] >> matTrainingImages;
-	fsTrainingImages.release();
-
-	cv::KNearest kNearest = cv::KNearest();
-
-																	// pass in the training images and classifications,
-	kNearest.train(matTrainingImages, matClassificationFloats);		// note these both have to be of type Mat (a single Mat)
-																	// even though in reality they are multiple images / numbers
-
-	cv::Mat matTestingNumbers = cv::imread("test_numbers.png");
-
-	if (matTestingNumbers.empty()) {								// if unable to open image
-		std::cout << "error: image not read from file\n\n";			// show error message on command line
-		return(0);													// and exit program
-	}
-
-	cv::Mat matGrayscale;
-	cv::Mat matBlurred;
-	cv::Mat matThresh;
-
-	cv::cvtColor(matTestingNumbers, matGrayscale, CV_BGR2GRAY);		// convert to grayscale
+	cv::cvtColor(matTrainingNumbers, matGrayscale, CV_BGR2GRAY);		// convert to grayscale
 
 	cv::GaussianBlur(matGrayscale,			// input image
 		matBlurred,							// output image
 		cv::Size(5, 5),						// smoothing window width and height in pixels
 		0);									// sigma value, determines how much the image will be blurred, zero makes function choose the sigma value
 
-	cv::adaptiveThreshold(matBlurred, matThresh, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY_INV, 11, 2);
+										// filter image from grayscale to black and white
+	cv::adaptiveThreshold(matBlurred,							// input image
+						  matThresh,							// output image
+						  255,									// make pixels that pass the threshold full white
+						  cv::ADAPTIVE_THRESH_GAUSSIAN_C,		// use gaussian rather than mean, seems to give better results
+						  cv::THRESH_BINARY_INV,				// invert so foreground will be white, background will be black
+						  11,									// size of a pixel neighborhood used to calculate threshold value
+						  2);									// constant subtracted from the mean or weighted mean
 
-	cv::imshow("matThresh", matThresh);
+	cv::imshow("matThresh", matThresh);			// show threshold image for reference
 
-	cv::Mat matThreshCopy;
+	matThreshCopy = matThresh.clone();			// make a copy of the thresh image, this in necessary b/c findContours modifies the image
 
-	matThreshCopy = matThresh.clone();
+	cv::findContours(matThreshCopy,					// input image, make sure to use a copy since the function will modify this image in the course of finding contours
+					 ptContours,					// output contours
+					 v4iHierarchy,					// output hierarchy
+					 cv::RETR_EXTERNAL,				// retrieve the outermost contours only
+					 cv::CHAIN_APPROX_SIMPLE);		// compress horizontal, vertical, and diagonal segments and leave only their end points
 
-	std::vector<std::vector<cv::Point> > ptContours;
-	std::vector<cv::Vec4i> v4iHierarchy;
+	for (int i = 0; i < ptContours.size(); i++) {						// for each contour
+		if (cv::contourArea(ptContours[i]) > MIN_CONTOUR_AREA) {			// if contour is big enough to consider
+			cv::Rect boundingRect = cv::boundingRect(ptContours[i]);			// get the bounding rect
 
-	cv::findContours(matThreshCopy, ptContours, v4iHierarchy, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+			cv::rectangle(matTrainingNumbers, boundingRect, cv::Scalar(0, 0, 255), 2);		// draw red rectangle around each contour as we ask user for input
 
-	for (int i = 0; i < ptContours.size(); i++) {
-		ContourWithData contourWithData;
-		contourWithData.ptContour = ptContours[i];
-		contourWithData.boundingRect = cv::boundingRect(contourWithData.ptContour);
-		contourWithData.fltArea = cv::contourArea(contourWithData.ptContour);
-		allContoursWithData.push_back(contourWithData);
+			cv::Mat matROI = matThresh(boundingRect);			// get ROI image of bounding rect
+
+			cv::Mat matROIResized;
+			cv::resize(matROI, matROIResized, cv::Size(RESIZED_IMAGE_WIDTH, RESIZED_IMAGE_HEIGHT));		// resize image, this will be more consistent for recognition and storage
+			
+			cv::imshow("matROI", matROI);								// show ROI image for reference
+			cv::imshow("matROIResized", matROIResized);					// show resized ROI image for reference
+			cv::imshow("matTrainingNumbers", matTrainingNumbers);		// show training numbers image, this will now have red rectangles drawn on it
+
+			int intChar = cv::waitKey(0);			// get key press
+
+			if (intChar == 27) {		// if esc key was pressed
+				return(0);				// exit program
+			} else if (std::find(intValidChars.begin(), intValidChars.end(), intChar) != intValidChars.end()) {  // else if the char is in the list of chars we are looking for . . .
+				
+				matClassificationInts.push_back(intChar);		// append classification char to integer list of chars (we will convert later before writing to file)
+
+				cv::Mat matImageFloat;
+				matROIResized.convertTo(matImageFloat, CV_32FC1);		// convert Mat to float
+				
+				cv::Mat matImageReshaped = matImageFloat.reshape(1, 1);		// flatten
+
+				matTrainingImages.push_back(matImageReshaped);		// add to Mat as though it was a vector, this is necessary due to the
+																	// data types that KNearest.train accepts
+			}	// end if
+		}	// end if
+	}	// end for
+
+	std::cout << "training complete\n\n";
+
+			// save classifications to file ///////////////////////////////////////////////////////
+
+	cv::Mat matClassificationIntsReshaped = matClassificationInts.reshape(1, 1);		// flatten
+
+	cv::Mat matClassificationFloats;
+	matClassificationInts.convertTo(matClassificationFloats, CV_32FC1);			// convert ints to floats
+
+	cv::FileStorage fsClassifications("classifications.xml", cv::FileStorage::WRITE);			// open the classifications file
+
+	if (fsClassifications.isOpened() == false) {														// if the file was not opened successfully
+		std::cout << "error, unable to open training classifications file, exiting program\n\n";		// show error message
+		return(0);																						// and exit program
+	}
+
+	fsClassifications << "classifications" << matClassificationFloats;		// write classifications into classifications section of classifications file
+	fsClassifications.release();											// close the classifications file
+	
+			// save training images to file ///////////////////////////////////////////////////////
+
+	cv::FileStorage fsTrainingImages("images.xml", cv::FileStorage::WRITE);			// open the training images file
+
+	if (fsTrainingImages.isOpened() == false) {													// if the file was not opened successfully
+		std::cout << "error, unable to open training images file, exiting program\n\n";			// show error message
+		return(0);																				// and exit program
 	}
 	
-	for (int i = 0; i < allContoursWithData.size(); i++) {					// for all contours
-		if (allContoursWithData[i].checkIfContourIsValid()) {				// check if valid
-			validContoursWithData.push_back(allContoursWithData[i]);		// if so, append to valid contour list
-		}
-	}
-															// sort contours from left to right
-	std::sort(validContoursWithData.begin(), validContoursWithData.end(), ContourWithData::sortByBoundingRectXPosition);
+	fsTrainingImages << "images" << matTrainingImages;		// write training images into images section of images file
+	fsTrainingImages.release();								// close the training images file
 
-	std::string strFinalString;
-
-	for (int i = 0; i < validContoursWithData.size(); i++) {			// for each contour
-		
-																		// draw a green rect around the current char
-		cv::rectangle(matTestingNumbers, validContoursWithData[i].boundingRect, cv::Scalar(0, 255, 0), 2);
-
-		cv::Mat matROI = matThresh(validContoursWithData[i].boundingRect);
-
-		cv::Mat matROIResized;
-		cv::resize(matROI, matROIResized, cv::Size(RESIZED_IMAGE_WIDTH, RESIZED_IMAGE_HEIGHT));
-
-		cv::Mat matROIFloat;
-
-		matROIResized.convertTo(matROIFloat, CV_32FC1);
-
-		float fltCurrentChar = kNearest.find_nearest(matROIFloat.reshape(1, 1), 1);
-		
-		strFinalString = strFinalString + char(int(fltCurrentChar));
-	}
-	
-	std::cout << "\n\n" << strFinalString << "\n\n";		// show the full string
-	
-	cv::imshow("matTestingNumbers", matTestingNumbers);
-	
-	cv::waitKey(0);
-	
 	return(0);
 }
-
 
